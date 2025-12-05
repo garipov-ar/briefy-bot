@@ -105,10 +105,10 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return "—", "—", "—"
         
         sla_pct = round(on_time / total * 100, 1)
-        min_on_time = int(total * 0.87)  # можно использовать math.ceil, но int(x*0.87) + (1 if x*0.87%1 else 0) — проще через ceil
+        min_on_time = int(total * 0.87)
         import math
         min_on_time = math.ceil(total * 0.87)
-        buffer = on_time - min_on_time  # сколько "лишних" ТТ в срок — можно позволить столько же нарушений
+        buffer = on_time - min_on_time
 
         if buffer >= 0:
             status = f"✅(+{buffer} ТТ)"
