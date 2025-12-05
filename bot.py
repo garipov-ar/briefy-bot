@@ -36,7 +36,7 @@ def fix_ott(df):
 def calc_sla(total, on_time):
     """Расчёт SLA и буфера до норматива."""
     if total == 0:
-        return "—", "—", "—"
+        return "—", None, "—"  # <- buffer = None для пустых групп
 
     import math
     sla_pct = round(on_time / total * 100, 1)
@@ -130,7 +130,7 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report_lines.append(f"В срок: {on_time_platina}")
         report_lines.append(f"Всего: {total_platina}")
         report_lines.append(f"SLA: {sla_platina}% {status_platina}")
-        if buffer_platina < 0:
+        if isinstance(buffer_platina, (int, float)) and buffer_platina < 0:
             report_lines.append(f"Нужно до норматива: {abs(buffer_platina)} ТТ")
         report_lines.append("")
 
@@ -146,7 +146,7 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report_lines.append(f"В срок: {on_time_other}")
         report_lines.append(f"Всего: {total_other}")
         report_lines.append(f"SLA: {sla_other}% {status_other}")
-        if buffer_other < 0:
+        if isinstance(buffer_other, (int, float)) and buffer_other < 0:
             report_lines.append(f"Нужно до норматива: {abs(buffer_other)} ТТ")
         report_lines.append("")
 
