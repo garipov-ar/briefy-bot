@@ -26,7 +26,7 @@ def normalize_sla_column(df):
 
 
 def fix_ott(df):
-    """Для ОТТ подменяет "Нарушение SLA" значением из "Нарушение SLA без ожидания клиента"."""
+    """Для ОТТ подменяет 'Нарушение SLA' значением из 'Нарушение SLA без ожидания клиента'."""
     mask_ott = df["Тип услуги"] == "ОТТ"
     df.loc[mask_ott, "Нарушение SLA"] = df.loc[mask_ott, "Нарушение SLA без ожидания клиента"] \
         .apply(lambda x: 1 if x == 1 else 0)
@@ -37,15 +37,15 @@ def calc_sla(total, on_time):
     """Расчёт SLA и буфера до норматива 87%"""
     import math
     if total == 0:
-        return "—", None, "—"
+        # Пустая группа считается 100% SLA
+        return 100.0, 0, "✅"
 
     sla_pct = round(on_time / total * 100, 1)
-    min_on_time = math.ceil(total * 0.87)  # минимальное число ТТ для норматива
-    buffer = on_time - min_on_time  # положительное = превышение нормы, отрицательное = недобор
+    min_on_time = math.ceil(total * 0.87)
+    buffer = on_time - min_on_time  # положительное = выше нормы, отрицательное = недобор
 
     status = "✅" if buffer >= 0 else "❌"
     return sla_pct, buffer, status
-
 
 
 # =====================================================================
@@ -83,8 +83,7 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'Тип услуги',
         'Нарушение SLA',
         'Нарушение SLA без ожидания клиента',
-        'МРФ подключения',
-        'РФ подключения'
+        'МРФ подключения'
     ]
 
     if not all(col in df.columns for col in required_cols):
@@ -111,14 +110,14 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # =====================================================================
-    # Формирование отчёта с группировкой
+    # Формирование отчёта с группировкой по МРФ подключения
     # =====================================================================
 
     group_cols = ['МРФ подключения']
 
-    for (mrf, rf), group_df in df.groupby(group_cols):
+    for mrf, group_df in df.groupby(group_cols):
         report_lines = [f"📊 Отчёт по SLA (3ЛТП), норматив: **87,0%**\n"]
-        report_lines.append(f"📍 {mrf}\n📌 {rf}\n")
+        report_lines.append(f"📍 {mrf}\n")
 
         # Платина
         df_platina = group_df[group_df['Уровень'] == 'Платиновый'].copy()
@@ -135,7 +134,7 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             report_lines.append(f"Нужно до норматива: {abs(buffer_platina)} ТТ")
         report_lines.append("")
 
-        # Прочие
+        # Прочие уровни
         other_levels = ['Бронзовый', 'Золотой', 'Серебряный']
         df_other = group_df[group_df['Уровень'].isin(other_levels)].copy()
         df_other['Нарушение SLA'] = normalize_sla_column(df_other)
@@ -151,7 +150,7 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             report_lines.append(f"Нужно до норматива: {abs(buffer_other)} ТТ")
         report_lines.append("")
 
-        # Отправляем сообщение по одной группе
+        # Отправляем сообщение по одной МРФ
         report = "\n".join(report_lines)
         await update.message.reply_text(report, parse_mode="Markdown")
 
