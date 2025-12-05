@@ -37,7 +37,6 @@ def calc_sla(total, on_time):
     """Расчёт SLA и буфера до норматива 87%"""
     import math
     if total == 0:
-        # Пустая группа считается 100% SLA
         return 100.0, 0, "✅"
 
     sla_pct = round(on_time / total * 100, 1)
@@ -106,50 +105,37 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # =====================================================================
-    # Формирование отчёта с группировкой по МРФ и внутри по РФ
+    # Формирование отчёта с Markdown-таблицами
     # =====================================================================
 
     for mrf, mrf_df in df.groupby(['МРФ подключения']):
-        report_lines = [f"📊 Отчёт по SLA (3ЛТП), норматив: **87,0%**"]
-        report_lines.append(f"\n📍 {mrf}\n")
+        mrf_name = mrf if isinstance(mrf, str) else mrf[0]
+        report_lines = [f"📊 Отчёт по SLA (3ЛТП), норматив: **87,0%**\n"]
+        report_lines.append(f"📍 *{mrf_name}*\n")
 
         for rf, group_df in mrf_df.groupby(['РФ подключения']):
-            report_lines.append(f"📌 {rf}")
+            rf_name = rf if isinstance(rf, str) else rf[0]
+            report_lines.append(f"📌 *{rf_name}*\n")
 
-            # Платина
-            df_platina = group_df[group_df['Уровень'] == 'Платиновый'].copy()
-            df_platina['Нарушение SLA'] = normalize_sla_column(df_platina)
-            total_platina = len(df_platina)
-            on_time_platina = (df_platina['Нарушение SLA'] == 0).sum()
-            sla_platina, buffer_platina, status_platina = calc_sla(total_platina, on_time_platina)
+            # Подготовка данных для таблицы
+            table_lines = ["| Уровень | В срок | Всего | SLA | Статус | Нужно до норматива |",
+                           "|---------|--------|-------|-----|--------|------------------|"]
 
-            report_lines.append("SLA 3лтп Платина")
-            report_lines.append(f"В срок: {on_time_platina}")
-            report_lines.append(f"Всего: {total_platina}")
-            report_lines.append(f"SLA: {sla_platina}% {status_platina}")
-            if isinstance(buffer_platina, (int, float)) and buffer_platina < 0:
-                report_lines.append(f"Нужно до норматива: {abs(buffer_platina)} ТТ")
-            report_lines.append("")
+            for level_name, df_level in [("Платина", group_df[group_df['Уровень'] == 'Платиновый']),
+                                         ("Прочие", group_df[group_df['Уровень'].isin(['Бронзовый', 'Золотой', 'Серебряный'])])]:
+                df_level['Нарушение SLA'] = normalize_sla_column(df_level)
+                total = len(df_level)
+                on_time = (df_level['Нарушение SLA'] == 0).sum()
+                sla_pct, buffer, status = calc_sla(total, on_time)
+                need_tt = abs(buffer) if buffer < 0 else "-"
+                table_lines.append(f"| {level_name} | {on_time} | {total} | {sla_pct}% | {status} | {need_tt} |")
 
-            # Прочие
-            other_levels = ['Бронзовый', 'Золотой', 'Серебряный']
-            df_other = group_df[group_df['Уровень'].isin(other_levels)].copy()
-            df_other['Нарушение SLA'] = normalize_sla_column(df_other)
-            total_other = len(df_other)
-            on_time_other = (df_other['Нарушение SLA'] == 0).sum()
-            sla_other, buffer_other, status_other = calc_sla(total_other, on_time_other)
+            report_lines.extend(table_lines)
+            report_lines.append("")  # пустая строка между РФ
 
-            report_lines.append("SLA 3лтп Прочие")
-            report_lines.append(f"В срок: {on_time_other}")
-            report_lines.append(f"Всего: {total_other}")
-            report_lines.append(f"SLA: {sla_other}% {status_other}")
-            if isinstance(buffer_other, (int, float)) and buffer_other < 0:
-                report_lines.append(f"Нужно до норматива: {abs(buffer_other)} ТТ")
-            report_lines.append("")
-
+        report_text = "\n".join(report_lines)
         # Отправляем сообщение для каждой МРФ
-        report = "\n".join(report_lines)
-        await update.message.reply_text(report, parse_mode="Markdown")
+        await update.message.reply_text(report_text, parse_mode="Markdown")
 
 
 # =====================================================================
