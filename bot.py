@@ -38,7 +38,6 @@ def calc_sla(total, on_time):
     import math
     if total == 0:
         return 100.0, 0, "✅"
-
     sla_pct = round(on_time / total * 100, 1)
     min_on_time = math.ceil(total * 0.87)
     buffer = on_time - min_on_time
@@ -53,12 +52,10 @@ def calc_sla(total, on_time):
 async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
 
-    # Проверка формата
     if not doc.file_name.lower().endswith(".xlsx"):
         await update.message.reply_text("Пожалуйста, отправьте файл в формате .xlsx")
         return
 
-    # Скачиваем файл в память
     file_bytes = BytesIO()
     await (await doc.get_file()).download_to_memory(file_bytes)
     file_bytes.seek(0)
@@ -70,7 +67,6 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Не удалось прочитать Excel-файл.")
         return
 
-    # Проверка обязательных столбцов
     required_cols = [
         '"source_NTTM_DB"[3ЛТП_Признак]',
         'Уровень',
@@ -86,14 +82,12 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ В файле отсутствуют необходимые столбцы.")
         return
 
-    # Определяем тип файла и обрабатываем ОТТ
     if "dwh" in doc.file_name.lower() or "sla" in doc.file_name.lower():
         df = fix_ott(df)
     else:
         await update.message.reply_text("ℹ️ Имя файла должно содержать 'dwh' или 'sla'.")
         return
 
-    # Общая фильтрация
     base_mask = (
         (df['"source_NTTM_DB"[3ЛТП_Признак]'] == 1) &
         (df['Исключить ЦЭ'] == 'Без признака ЦЭ') &
@@ -105,21 +99,17 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # =====================================================================
-    # Формирование отчёта с Markdown-таблицами
+    # Формирование отчёта в текстовом формате
     # =====================================================================
 
     for mrf, mrf_df in df.groupby(['МРФ подключения']):
         mrf_name = mrf if isinstance(mrf, str) else mrf[0]
-        report_lines = [f"📊 Отчёт по SLA (3ЛТП), норматив: **87,0%**\n"]
-        report_lines.append(f"📍 *{mrf_name}*\n")
+        report_lines = [f"📊 Отчёт по SLA (3ЛТП), норматив: 87.0%\n"]
+        report_lines.append(f"📍 {mrf_name}\n")
 
         for rf, group_df in mrf_df.groupby(['РФ подключения']):
             rf_name = rf if isinstance(rf, str) else rf[0]
-            report_lines.append(f"📌 *{rf_name}*\n")
-
-            # Подготовка данных для таблицы
-            table_lines = ["| Уровень | В срок | Всего | SLA | Статус | Нужно до норматива |",
-                           "|---------|--------|-------|-----|--------|------------------|"]
+            report_lines.append(f"📌 {rf_name}\n")
 
             for level_name, df_level in [("Платина", group_df[group_df['Уровень'] == 'Платиновый']),
                                          ("Прочие", group_df[group_df['Уровень'].isin(['Бронзовый', 'Золотой', 'Серебряный'])])]:
@@ -127,15 +117,17 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 total = len(df_level)
                 on_time = (df_level['Нарушение SLA'] == 0).sum()
                 sla_pct, buffer, status = calc_sla(total, on_time)
-                need_tt = abs(buffer) if buffer < 0 else "-"
-                table_lines.append(f"| {level_name} | {on_time} | {total} | {sla_pct}% | {status} | {need_tt} |")
 
-            report_lines.extend(table_lines)
-            report_lines.append("")  # пустая строка между РФ
+                report_lines.append(f"SLA 3лтп {level_name}")
+                report_lines.append(f"В срок: {on_time}")
+                report_lines.append(f"Всего: {total}")
+                report_lines.append(f"SLA: {sla_pct}% {status}")
+                if buffer < 0:
+                    report_lines.append(f"Нужно до норматива: {abs(buffer)}")
+                report_lines.append("")  # пустая строка между уровнями
 
         report_text = "\n".join(report_lines)
-        # Отправляем сообщение для каждой МРФ
-        await update.message.reply_text(report_text, parse_mode="Markdown")
+        await update.message.reply_text(report_text)
 
 
 # =====================================================================
