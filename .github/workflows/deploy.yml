@@ -2,7 +2,7 @@ name: Deploy Briefy Bot
 
 on:
   push:
-    branches: ["main"]
+    branches: [main]
 
 jobs:
   deploy:
@@ -15,7 +15,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}  # ← лучше не root, а ваш пользователь (например, aidar)
+          username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ~/Development/Bots/briefy-bot
