@@ -7,22 +7,29 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy via SSH
+      - name: SSH Deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd ~/Development/Bots/briefy-bot
-            git pull origin main
-            docker-compose down
-            docker-compose build --no-cache
-            docker-compose up -d
-            echo "✅ Деплой briefy-bot завершён!! Commit: $GITHUB_SHA"
+            cd /root/Development/Bots/briefy-bot || exit 1
+
+            echo "➡️ Pulling last changes"
+            git fetch --all
+            git reset --hard origin/main
+
+            echo "➡️ Restart docker"
+            docker compose down
+            docker compose build --no-cache
+            docker compose up -d
+
+            echo "✅ Deploy complete! Commit: $GITHUB_SHA"
         env:
           GITHUB_SHA: ${{ github.sha }}
