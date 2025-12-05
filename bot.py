@@ -114,9 +114,9 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # =====================================================================
 
     group_cols = ['МРФ подключения', 'РФ подключения']
-    report_lines = ["📊 Отчёт по SLA (3ЛТП), норматив: **87,0%**\n"]
 
     for (mrf, rf), group_df in df.groupby(group_cols):
+        report_lines = [f"📊 Отчёт по SLA (3ЛТП), норматив: **87,0%**\n"]
         report_lines.append(f"📍 {mrf}\n📌 {rf}\n")
 
         # Платина
@@ -150,9 +150,9 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             report_lines.append(f"Нужно до норматива: {abs(buffer_other)} ТТ")
         report_lines.append("")
 
-    # Отправка отчёта
-    report = "\n".join(report_lines)
-    await update.message.reply_text(report, parse_mode="Markdown")
+        # Отправляем сообщение по одной группе
+        report = "\n".join(report_lines)
+        await update.message.reply_text(report, parse_mode="Markdown")
 
 
 # =====================================================================
