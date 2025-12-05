@@ -18,7 +18,7 @@ jobs:
           username: ${{ secrets.USERNAME }}  # ← лучше не root, а ваш пользователь (например, aidar)
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/briefy-bot
+            cd ~/Development/Bots/briefy-bot
             git pull origin main
             docker-compose down
             docker-compose build --no-cache
