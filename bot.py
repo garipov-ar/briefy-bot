@@ -17,7 +17,7 @@ if not BOT_TOKEN:
 
 
 # =====================================================================
-# Универсальные функции
+# Вспомогательные функции
 # =====================================================================
 
 def normalize_sla_column(df):
@@ -42,8 +42,7 @@ def calc_sla(total, on_time):
 
     sla_pct = round(on_time / total * 100, 1)
     min_on_time = math.ceil(total * 0.87)
-    buffer = on_time - min_on_time  # положительное = выше нормы, отрицательное = недобор
-
+    buffer = on_time - min_on_time
     status = "✅" if buffer >= 0 else "❌"
     return sla_pct, buffer, status
 
@@ -55,14 +54,12 @@ def calc_sla(total, on_time):
 async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
 
-    # Проверка формата Excel
+    # Проверка формата
     if not doc.file_name.lower().endswith(".xlsx"):
         await update.message.reply_text("Пожалуйста, отправьте файл в формате .xlsx")
         return
 
-    file_name = doc.file_name.lower()
-
-    # Загружаем файл в память
+    # Скачиваем файл в память
     file_bytes = BytesIO()
     await (await doc.get_file()).download_to_memory(file_bytes)
     file_bytes.seek(0)
@@ -83,15 +80,15 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'Тип услуги',
         'Нарушение SLA',
         'Нарушение SLA без ожидания клиента',
-        'МРФ подключения'
+        'МРФ подключения',
+        'РФ подключения'
     ]
-
     if not all(col in df.columns for col in required_cols):
         await update.message.reply_text("❌ В файле отсутствуют необходимые столбцы.")
         return
 
-    # Определяем тип файла
-    if "dwh" in file_name or "sla" in file_name:
+    # Определяем тип файла и обрабатываем ОТТ
+    if "dwh" in doc.file_name.lower() or "sla" in doc.file_name.lower():
         df = fix_ott(df)
     else:
         await update.message.reply_text("ℹ️ Имя файла должно содержать 'dwh' или 'sla'.")
@@ -104,53 +101,53 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         (df['Исключить по услуге'] == 'Расчетные услуги')
     )
     df = df[base_mask].copy()
-
     if df.empty:
         await update.message.reply_text("ℹ️ После фильтрации данных нет.")
         return
 
     # =====================================================================
-    # Формирование отчёта с группировкой по МРФ подключения
+    # Формирование отчёта с группировкой по МРФ и внутри по РФ
     # =====================================================================
 
-    group_cols = ['МРФ подключения']
+    for mrf, mrf_df in df.groupby(['МРФ подключения']):
+        report_lines = [f"📊 Отчёт по SLA (3ЛТП), норматив: **87,0%**"]
+        report_lines.append(f"\n📍 {mrf}\n")
 
-    for mrf, group_df in df.groupby(group_cols):
-        report_lines = [f"📊 Отчёт по SLA (3ЛТП), норматив: **87,0%**\n"]
-        report_lines.append(f"📍 {mrf}\n")
+        for rf, group_df in mrf_df.groupby(['РФ подключения']):
+            report_lines.append(f"📌 {rf}")
 
-        # Платина
-        df_platina = group_df[group_df['Уровень'] == 'Платиновый'].copy()
-        df_platina['Нарушение SLA'] = normalize_sla_column(df_platina)
-        total_platina = len(df_platina)
-        on_time_platina = (df_platina['Нарушение SLA'] == 0).sum()
-        sla_platina, buffer_platina, status_platina = calc_sla(total_platina, on_time_platina)
+            # Платина
+            df_platina = group_df[group_df['Уровень'] == 'Платиновый'].copy()
+            df_platina['Нарушение SLA'] = normalize_sla_column(df_platina)
+            total_platina = len(df_platina)
+            on_time_platina = (df_platina['Нарушение SLA'] == 0).sum()
+            sla_platina, buffer_platina, status_platina = calc_sla(total_platina, on_time_platina)
 
-        report_lines.append("SLA 3лтп Платина")
-        report_lines.append(f"В срок: {on_time_platina}")
-        report_lines.append(f"Всего: {total_platina}")
-        report_lines.append(f"SLA: {sla_platina}% {status_platina}")
-        if isinstance(buffer_platina, (int, float)) and buffer_platina < 0:
-            report_lines.append(f"Нужно до норматива: {abs(buffer_platina)} ТТ")
-        report_lines.append("")
+            report_lines.append("SLA 3лтп Платина")
+            report_lines.append(f"В срок: {on_time_platina}")
+            report_lines.append(f"Всего: {total_platina}")
+            report_lines.append(f"SLA: {sla_platina}% {status_platina}")
+            if isinstance(buffer_platina, (int, float)) and buffer_platina < 0:
+                report_lines.append(f"Нужно до норматива: {abs(buffer_platina)} ТТ")
+            report_lines.append("")
 
-        # Прочие уровни
-        other_levels = ['Бронзовый', 'Золотой', 'Серебряный']
-        df_other = group_df[group_df['Уровень'].isin(other_levels)].copy()
-        df_other['Нарушение SLA'] = normalize_sla_column(df_other)
-        total_other = len(df_other)
-        on_time_other = (df_other['Нарушение SLA'] == 0).sum()
-        sla_other, buffer_other, status_other = calc_sla(total_other, on_time_other)
+            # Прочие
+            other_levels = ['Бронзовый', 'Золотой', 'Серебряный']
+            df_other = group_df[group_df['Уровень'].isin(other_levels)].copy()
+            df_other['Нарушение SLA'] = normalize_sla_column(df_other)
+            total_other = len(df_other)
+            on_time_other = (df_other['Нарушение SLA'] == 0).sum()
+            sla_other, buffer_other, status_other = calc_sla(total_other, on_time_other)
 
-        report_lines.append("SLA 3лтп Прочие")
-        report_lines.append(f"В срок: {on_time_other}")
-        report_lines.append(f"Всего: {total_other}")
-        report_lines.append(f"SLA: {sla_other}% {status_other}")
-        if isinstance(buffer_other, (int, float)) and buffer_other < 0:
-            report_lines.append(f"Нужно до норматива: {abs(buffer_other)} ТТ")
-        report_lines.append("")
+            report_lines.append("SLA 3лтп Прочие")
+            report_lines.append(f"В срок: {on_time_other}")
+            report_lines.append(f"Всего: {total_other}")
+            report_lines.append(f"SLA: {sla_other}% {status_other}")
+            if isinstance(buffer_other, (int, float)) and buffer_other < 0:
+                report_lines.append(f"Нужно до норматива: {abs(buffer_other)} ТТ")
+            report_lines.append("")
 
-        # Отправляем сообщение по одной МРФ
+        # Отправляем сообщение для каждой МРФ
         report = "\n".join(report_lines)
         await update.message.reply_text(report, parse_mode="Markdown")
 
