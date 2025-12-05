@@ -21,17 +21,12 @@ if not BOT_TOKEN:
 # =====================================================================
 
 def normalize_sla_column(df):
-    """
-    Конвертирует 'Нарушение SLA' в 0/1.
-    Пустые → 1 (нарушение).
-    """
+    """Конвертирует 'Нарушение SLA' в 0/1. Пустые → 1 (нарушение)."""
     return pd.to_numeric(df['Нарушение SLA'], errors='coerce').fillna(1)
 
 
 def fix_ott(df):
-    """
-    Для ОТТ подменяет "Нарушение SLA" значением из "Нарушение SLA без ожидания клиента".
-    """
+    """Для ОТТ подменяет "Нарушение SLA" значением из "Нарушение SLA без ожидания клиента"."""
     mask_ott = df["Тип услуги"] == "ОТТ"
     df.loc[mask_ott, "Нарушение SLA"] = df.loc[mask_ott, "Нарушение SLA без ожидания клиента"] \
         .apply(lambda x: 1 if x == 1 else 0)
@@ -48,8 +43,7 @@ def calc_sla(total, on_time):
     min_on_time = math.ceil(total * 0.87)
     buffer = on_time - min_on_time
 
-    status = f"✅(+{buffer} ТТ)" if buffer >= 0 else f"❌ Ниже норматива ({buffer} ТТ)"
-
+    status = f"✅" if buffer >= 0 else f"❌"
     return sla_pct, buffer, status
 
 
@@ -60,14 +54,14 @@ def calc_sla(total, on_time):
 async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
 
-    # Универсальная проверка Excel
+    # Проверка формата Excel
     if not doc.file_name.lower().endswith(".xlsx"):
         await update.message.reply_text("Пожалуйста, отправьте файл в формате .xlsx")
         return
 
     file_name = doc.file_name.lower()
 
-    # Загружаем файл
+    # Загружаем файл в память
     file_bytes = BytesIO()
     await (await doc.get_file()).download_to_memory(file_bytes)
     file_bytes.seek(0)
@@ -87,7 +81,9 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'Исключить по услуге',
         'Тип услуги',
         'Нарушение SLA',
-        'Нарушение SLA без ожидания клиента'
+        'Нарушение SLA без ожидания клиента',
+        'МРФ подключения',
+        'РФ подключения'
     ]
 
     if not all(col in df.columns for col in required_cols):
@@ -109,41 +105,53 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     df = df[base_mask].copy()
 
-    # ------------------- ПЛАТИНОВЫЙ -------------------
-    df_platina = df[df['Уровень'] == 'Платиновый'].copy()
-    df_platina['Нарушение SLA'] = normalize_sla_column(df_platina)
-
-    total_platina = len(df_platina)
-    on_time_platina = (df_platina['Нарушение SLA'] == 0).sum()
-    sla_platina, buffer_platina, status_platina = calc_sla(total_platina, on_time_platina)
-
-    # ------------------- ПРОЧИЕ (Бронза/Золото/Серебро) -------------------
-    other_levels = ['Бронзовый', 'Золотой', 'Серебряный']
-    df_other = df[df['Уровень'].isin(other_levels)].copy()
-    df_other['Нарушение SLA'] = normalize_sla_column(df_other)
-
-    total_other = len(df_other)
-    on_time_other = (df_other['Нарушение SLA'] == 0).sum()
-    sla_other, buffer_other, status_other = calc_sla(total_other, on_time_other)
+    if df.empty:
+        await update.message.reply_text("ℹ️ После фильтрации данных нет.")
+        return
 
     # =====================================================================
-    # Формирование отчёта
+    # Формирование отчёта с группировкой
     # =====================================================================
 
-    report = (
-        "📊 Отчёт по SLA (3ЛТП), норматив: **87,0%**\n\n"
-        f"🔹 **Платиновый**\n"
-        f"   Всего: {total_platina}\n"
-        f"   В срок: {on_time_platina}\n"
-        f"   SLA: {sla_platina}%\n"
-        f"   Статус: {status_platina}\n\n"
-        f"🔹 **Прочие уровни** (Бронза/Золото/Серебро)\n"
-        f"   Всего: {total_other}\n"
-        f"   В срок: {on_time_other}\n"
-        f"   SLA: {sla_other}%\n"
-        f"   Статус: {status_other}"
-    )
+    group_cols = ['МРФ подключения', 'РФ подключения']
+    report_lines = ["📊 Отчёт по SLA (3ЛТП), норматив: **87,0%**\n"]
 
+    for (mrf, rf), group_df in df.groupby(group_cols):
+        report_lines.append(f"📍 {mrf}\n📌 {rf}\n")
+
+        # Платина
+        df_platina = group_df[group_df['Уровень'] == 'Платиновый'].copy()
+        df_platina['Нарушение SLA'] = normalize_sla_column(df_platina)
+        total_platina = len(df_platina)
+        on_time_platina = (df_platina['Нарушение SLA'] == 0).sum()
+        sla_platina, buffer_platina, status_platina = calc_sla(total_platina, on_time_platina)
+
+        report_lines.append("SLA 3лтп Платина")
+        report_lines.append(f"В срок: {on_time_platina}")
+        report_lines.append(f"Всего: {total_platina}")
+        report_lines.append(f"SLA: {sla_platina}% {status_platina}")
+        if buffer_platina < 0:
+            report_lines.append(f"Нужно до норматива: {abs(buffer_platina)} ТТ")
+        report_lines.append("")
+
+        # Прочие
+        other_levels = ['Бронзовый', 'Золотой', 'Серебряный']
+        df_other = group_df[group_df['Уровень'].isin(other_levels)].copy()
+        df_other['Нарушение SLA'] = normalize_sla_column(df_other)
+        total_other = len(df_other)
+        on_time_other = (df_other['Нарушение SLA'] == 0).sum()
+        sla_other, buffer_other, status_other = calc_sla(total_other, on_time_other)
+
+        report_lines.append("SLA 3лтп Прочие")
+        report_lines.append(f"В срок: {on_time_other}")
+        report_lines.append(f"Всего: {total_other}")
+        report_lines.append(f"SLA: {sla_other}% {status_other}")
+        if buffer_other < 0:
+            report_lines.append(f"Нужно до норматива: {abs(buffer_other)} ТТ")
+        report_lines.append("")
+
+    # Отправка отчёта
+    report = "\n".join(report_lines)
     await update.message.reply_text(report, parse_mode="Markdown")
 
 
