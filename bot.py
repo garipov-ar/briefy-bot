@@ -36,26 +36,19 @@ def fix_ott(df):
 def calc_sla(total, on_time, norm=0.87):
     """
     Расчёт SLA и количества новых ТТ, необходимых для достижения норматива.
-    Новые ТТ учитываются и в total, и в on_time.
+    Новые ТТ добавляются и в total, и в on_time.
     """
-    import math
+    sla_pct = round(on_time / total * 100, 1) if total > 0 else 100.0
 
-    # Если всего нет, считаем SLA 100%
-    if total == 0:
-        return 100.0, 0, "✅"
+    if total == 0 or sla_pct >= norm * 100:
+        return sla_pct, 0, "✅"
 
-    sla_pct = round(on_time / total * 100, 1)
+    # Ищем минимальное X, чтобы (on_time + X)/(total + X) >= norm
+    x = 0
+    while (on_time + x) / (total + x) < norm:
+        x += 1
 
-    # Расчёт новых ТТ, которые нужно добавить
-    diff = norm * total - on_time
-    if diff <= 0:
-        need_tt = 0
-        status = "✅"
-    else:
-        need_tt = math.ceil(diff / (1 - norm))
-        status = "❌"
-
-    return sla_pct, need_tt, status
+    return sla_pct, x, "❌"
 
 
 # =====================================================================
@@ -129,14 +122,14 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 df_level['Нарушение SLA'] = normalize_sla_column(df_level)
                 total = len(df_level)
                 on_time = (df_level['Нарушение SLA'] == 0).sum()
-                sla_pct, buffer, status = calc_sla(total, on_time)
+                sla_pct, need_tt, status = calc_sla(total, on_time)
 
                 report_lines.append(f"SLA 3лтп {level_name}")
                 report_lines.append(f"В срок: {on_time}")
                 report_lines.append(f"Всего: {total}")
                 report_lines.append(f"SLA: {sla_pct}% {status}")
-                if buffer < 0:
-                    report_lines.append(f"Нужно до норматива: {abs(buffer)}")
+                if need_tt > 0:
+                    report_lines.append(f"Нужно до норматива: {need_tt}")
                 report_lines.append("")  # пустая строка между уровнями
 
         report_text = "\n".join(report_lines)
