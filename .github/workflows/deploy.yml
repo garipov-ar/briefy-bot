@@ -23,6 +23,6 @@ jobs:
             docker-compose down
             docker-compose build --no-cache
             docker-compose up -d
-            echo "✅ Деплой briefy-bot завершён! Commit: $GITHUB_SHA"
+            echo "✅ Деплой briefy-bot завершён!! Commit: $GITHUB_SHA"
         env:
           GITHUB_SHA: ${{ github.sha }}
