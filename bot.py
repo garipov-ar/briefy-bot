@@ -111,7 +111,7 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buffer = on_time - min_on_time  # сколько "лишних" ТТ в срок — можно позволить столько же нарушений
 
         if buffer >= 0:
-            status = f"✅ В норме (+{buffer} ТТ)"
+            status = f"✅(+{buffer} ТТ)"
         else:
             status = f"❌ Ниже норматива ({buffer} ТТ не хватает)"
 
