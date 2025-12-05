@@ -33,16 +33,29 @@ def fix_ott(df):
     return df
 
 
-def calc_sla(total, on_time):
-    """Расчёт SLA и буфера до норматива 87%"""
+def calc_sla(total, on_time, norm=0.87):
+    """
+    Расчёт SLA и количества новых ТТ, необходимых для достижения норматива.
+    Новые ТТ учитываются и в total, и в on_time.
+    """
     import math
+
+    # Если всего нет, считаем SLA 100%
     if total == 0:
         return 100.0, 0, "✅"
+
     sla_pct = round(on_time / total * 100, 1)
-    min_on_time = math.ceil(total * 0.87)
-    buffer = on_time - min_on_time
-    status = "✅" if buffer >= 0 else "❌"
-    return sla_pct, buffer, status
+
+    # Расчёт новых ТТ, которые нужно добавить
+    diff = norm * total - on_time
+    if diff <= 0:
+        need_tt = 0
+        status = "✅"
+    else:
+        need_tt = math.ceil(diff / (1 - norm))
+        status = "❌"
+
+    return sla_pct, need_tt, status
 
 
 # =====================================================================
