@@ -34,17 +34,18 @@ def fix_ott(df):
 
 
 def calc_sla(total, on_time):
-    """Расчёт SLA и буфера до норматива."""
-    if total == 0:
-        return "—", None, "—"  # <- buffer = None для пустых групп
-
+    """Расчёт SLA и буфера до норматива 87%"""
     import math
-    sla_pct = round(on_time / total * 100, 1)
-    min_on_time = math.ceil(total * 0.87)
-    buffer = on_time - min_on_time
+    if total == 0:
+        return "—", None, "—"
 
-    status = f"✅" if buffer >= 0 else f"❌"
+    sla_pct = round(on_time / total * 100, 1)
+    min_on_time = math.ceil(total * 0.87)  # минимальное число ТТ для норматива
+    buffer = on_time - min_on_time  # положительное = превышение нормы, отрицательное = недобор
+
+    status = "✅" if buffer >= 0 else "❌"
     return sla_pct, buffer, status
+
 
 
 # =====================================================================
@@ -113,7 +114,7 @@ async def handle_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Формирование отчёта с группировкой
     # =====================================================================
 
-    group_cols = ['МРФ подключения', 'РФ подключения']
+    group_cols = ['МРФ подключения']
 
     for (mrf, rf), group_df in df.groupby(group_cols):
         report_lines = [f"📊 Отчёт по SLA (3ЛТП), норматив: **87,0%**\n"]
